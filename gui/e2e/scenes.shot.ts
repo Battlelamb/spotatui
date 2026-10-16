@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { openWith, shot } from "./bridge";
 import {
   artist,
@@ -280,6 +280,11 @@ test("library health", async ({ page }) => {
     .getByRole("button", { name: /Library health/ })
     .click();
   await page.getByText("LINKED PLAYLIST").waitFor();
+  // The name column must keep real width instead of collapsing to 0 and
+  // bleeding its text into the next column (the table scrolls instead).
+  const name = page.getByRole("option", { name: /Road Trip/ }).locator(".name");
+  const box = await name.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThan(80);
   await shot(page, "library-health");
 });
 

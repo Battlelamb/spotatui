@@ -111,7 +111,7 @@ export function LibraryHealth({
           <>
             <div className="link-row head" aria-hidden="true">
               <span>#</span>
-              <span>Playlist</span>
+              <span className="name">Playlist</span>
               {SYNC_SOURCES.map((source) => (
                 <span key={source}>{source}</span>
               ))}

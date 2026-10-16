@@ -47,6 +47,10 @@ describe("LibraryHealth", () => {
     expect(html).toContain("skipped (Qobuz is not logged in)");
     expect(html).toContain("Sync all now");
     expect(html).toMatch(/class="crumb"[^]*? Back<\/button>/);
+    // The header's Playlist label shares the data rows' overflow-safe
+    // name class, so it clips instead of bleeding into the next column
+    // when the panel is narrower than the table (see LibraryHealth.css).
+    expect(html).toContain('<span class="name">Playlist</span>');
   });
 
   it("says which build can link when there are no links", () => {
