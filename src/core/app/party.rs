@@ -51,6 +51,31 @@ impl App {
     self.view.party_join_name.clear();
   }
 
+  /// The party follows Spotify transport only. Coarser than the transport
+  /// guard on purpose: a queued Spotify track keeps librespot, but a guest
+  /// must not drive the host's queue slot. A parked native backend has no
+  /// Spotify playback to relay or follow. Both the host's sync broadcast and
+  /// a guest's transport-key relay yield to local control here.
+  pub(crate) fn party_yields_to_local_playback(&self) -> bool {
+    self.apple_music_owns_playback()
+      || self.playback_owner().owns_local_sink()
+      || self.native_parked_here()
+  }
+
+  /// A guest under Shared Control relays transport keys to the party host
+  /// instead of applying them locally. This is an additive guard in front of
+  /// the normal dispatch, not a new entry in the playback-owner predicate
+  /// chain: a guest who leaves the party, whose host switches to Host Only,
+  /// or whose own device is playing something local-only falls straight
+  /// back through the unmodified path.
+  pub(crate) fn guest_relays_transport(&self) -> bool {
+    *self.party_status() == PartyStatus::Joined
+      && self
+        .party_session()
+        .is_some_and(|session| session.control_mode == ControlMode::SharedControl)
+      && !self.party_yields_to_local_playback()
+  }
+
   /// The local write is optimistic on purpose: the relay handler never writes
   /// the session back, so the popup's "Control" label renders from it.
   pub(crate) fn toggle_party_control_mode(&mut self) {

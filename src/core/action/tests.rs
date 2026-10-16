@@ -3888,3 +3888,154 @@ fn set_theme_bumps_the_theme_revision_only_when_a_color_changes() {
   app.apply(action());
   assert_eq!(app.display_revisions().get(DisplayDomain::Theme), rev + 1);
 }
+
+// --- party guest relay (SPO-13) ---
+//
+// A guest under Shared Control relays play/pause/next/previous/seek to the
+// party host instead of applying them locally. See
+// `App::guest_relays_transport` for the exact gate.
+
+mod party_guest_relay {
+  use super::*;
+  use crate::infra::network::sync::{
+    ControlMode, PartyRole, PartySession, PartyStatus, PlaybackAction,
+  };
+
+  fn joined_app(control_mode: ControlMode) -> (App, Receiver<IoEvent>) {
+    let (mut app, rx) = app_with_channel();
+    app.set_party_status(PartyStatus::Joined);
+    app.set_party_session(Some(PartySession {
+      role: PartyRole::Guest,
+      code: "ABCDEF".to_string(),
+      guests: Vec::new(),
+      control_mode,
+      host_name: "Host".to_string(),
+    }));
+    (app, rx)
+  }
+
+  #[test]
+  fn toggle_playback_relays_pause_when_playing() {
+    let (mut app, rx) = joined_app(ControlMode::SharedControl);
+    app.current_playback_context = Some(playback_context(true, false));
+
+    app.apply(Action::TogglePlayback);
+
+    assert!(matches!(
+      rx.try_recv(),
+      Ok(IoEvent::PartyPlaybackCommand(PlaybackAction::Pause))
+    ));
+  }
+
+  #[test]
+  fn toggle_playback_relays_play_when_paused() {
+    let (mut app, rx) = joined_app(ControlMode::SharedControl);
+    app.current_playback_context = Some(playback_context(false, false));
+
+    app.apply(Action::TogglePlayback);
+
+    assert!(matches!(
+      rx.try_recv(),
+      Ok(IoEvent::PartyPlaybackCommand(PlaybackAction::Play))
+    ));
+  }
+
+  #[test]
+  fn next_and_previous_track_relay_to_the_host() {
+    for (action, expected) in [
+      (Action::NextTrack, PlaybackAction::NextTrack),
+      (Action::PreviousTrack, PlaybackAction::PrevTrack),
+    ] {
+      let (mut app, rx) = joined_app(ControlMode::SharedControl);
+
+      app.apply(action);
+
+      match rx.try_recv() {
+        Ok(IoEvent::PartyPlaybackCommand(relayed)) => assert_eq!(relayed, expected),
+        _other => panic!("expected a relayed PlaybackAction (IoEvent is not Debug)"),
+      }
+    }
+  }
+
+  #[test]
+  fn force_previous_track_is_not_promised_by_the_relay_and_stays_local() {
+    let (mut app, rx) = joined_app(ControlMode::SharedControl);
+    app.song_progress_ms = 20_000;
+
+    app.apply(Action::ForcePreviousTrack);
+
+    assert!(matches!(rx.try_recv(), Ok(IoEvent::ForcePreviousTrack)));
+  }
+
+  #[test]
+  fn seek_actions_relay_an_absolute_target_position() {
+    // Mirrors `seek_actions_move_by_the_configured_step`'s local-arm fixture:
+    // one step in, so forward lands at `2 * step + 1_000` and backward at
+    // `1_000` — except here the position travels to the host, not `App`.
+    for (action, forward) in [(Action::SeekForward, true), (Action::SeekBackward, false)] {
+      let (mut app, rx) = joined_app(ControlMode::SharedControl);
+      let step = app.user_config.behavior.seek_milliseconds as u128;
+      app.song_progress_ms = step + 1_000;
+
+      app.apply(action);
+
+      let expected = (if forward { 2 * step + 1_000 } else { 1_000 }) as u64;
+      match rx.try_recv() {
+        Ok(IoEvent::PartyPlaybackCommand(PlaybackAction::Seek { position_ms })) => {
+          assert_eq!(position_ms, expected);
+        }
+        _other => panic!("expected a relayed Seek (IoEvent is not Debug)"),
+      }
+      // The guest's own position is untouched: only the host actually seeks.
+      assert_eq!(app.song_progress_ms, step + 1_000);
+    }
+  }
+
+  #[test]
+  fn volume_keys_are_not_relayed_and_stay_local() {
+    let (mut app, rx) = joined_app(ControlMode::SharedControl);
+    app.current_playback_context = Some(playback_context(true, false));
+
+    app.apply(Action::VolumeUp);
+
+    assert!(matches!(rx.try_recv(), Ok(IoEvent::ChangeVolume(_))));
+  }
+
+  #[test]
+  fn transport_keys_apply_locally_under_host_only_control() {
+    let (mut app, rx) = joined_app(ControlMode::HostOnly);
+    app.current_playback_context = Some(playback_context(true, false));
+
+    app.apply(Action::TogglePlayback);
+
+    assert!(matches!(rx.try_recv(), Ok(IoEvent::PausePlayback)));
+  }
+
+  #[test]
+  fn transport_keys_apply_locally_while_hosting() {
+    let (mut app, rx) = app_with_channel();
+    app.set_party_status(PartyStatus::Hosting);
+    app.set_party_session(Some(PartySession {
+      role: PartyRole::Host,
+      code: "ABCDEF".to_string(),
+      guests: Vec::new(),
+      control_mode: ControlMode::SharedControl,
+      host_name: "Host".to_string(),
+    }));
+    app.current_playback_context = Some(playback_context(true, false));
+
+    app.apply(Action::TogglePlayback);
+
+    assert!(matches!(rx.try_recv(), Ok(IoEvent::PausePlayback)));
+  }
+
+  #[test]
+  fn transport_keys_apply_locally_when_disconnected() {
+    let (mut app, rx) = app_with_channel();
+    app.current_playback_context = Some(playback_context(true, false));
+
+    app.apply(Action::TogglePlayback);
+
+    assert!(matches!(rx.try_recv(), Ok(IoEvent::PausePlayback)));
+  }
+}

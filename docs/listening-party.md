@@ -25,11 +25,20 @@ Press `2` or `j`, type the 6-character code, then your display name (up to 32 ch
 | Mode | Behavior |
 | --- | --- |
 | **Host only** (default) | Only the host controls playback; guests follow. |
-| **Shared control** | The host accepts playback commands from guests. spotatui guests do not send any yet, so this changes nothing for them today. |
+| **Shared control** | The host accepts playback commands from guests. A guest's play/pause, next, previous and seek keys go to the host instead of this device's own playback. |
 
 ## While a party runs
 
 The playbar shows `Party: N listeners` (host) or `Party: following <host>` (guest), and a status message tells you when someone joins or leaves.
+
+Under Shared Control, a guest's transport keys (play/pause, next, previous, seek
+forward/back) send a command to the host, which applies it and re-broadcasts
+the new state to everyone — the same keys a guest would use to control their
+own playback otherwise. Volume and everything outside transport (sidebar
+navigation, search, and so on) always stay local to each device. If a guest's
+own device is playing something the relay can't represent remotely (Apple
+Music, a local file, Subsonic, YouTube, Qobuz), their transport keys control
+that local playback instead, same as before joining.
 
 ## Your own relay
 

@@ -7,7 +7,7 @@
 
 use crate::core::app::{ActiveBlock, App, RouteId};
 use crate::core::plugin_api;
-use crate::infra::network::IoEvent;
+use crate::infra::network::{sync, IoEvent};
 
 use super::{Action, ActionOutcome, NavTarget, RepeatSetting};
 
@@ -21,6 +21,15 @@ impl App {
   }
 
   fn apply_action(&mut self, action: Action) -> ActionOutcome {
+    // A guest under Shared Control (`App::guest_relays_transport`): these five
+    // transport actions go to the party host over the relay instead of being
+    // applied to this device's own playback. Additive in front of the normal
+    // dispatch below — every other action, and these five under any other
+    // party state, falls straight through unmodified.
+    if let Some(relayed) = relay_party_transport(self, &action) {
+      self.dispatch(IoEvent::PartyPlaybackCommand(relayed));
+      return ActionOutcome::Applied;
+    }
     match action {
       // Music's state is its own intent, which a start still loading has
       // before any snapshot does.
@@ -364,6 +373,54 @@ fn effective_is_playing(app: &App) -> bool {
   plugin_api::playback_state(app)
     .map(|p| p.is_playing)
     .unwrap_or(false)
+}
+
+/// The relay translation for a guest's transport action, or `None` to fall
+/// through to the normal (local) arm — either because `action` isn't one of
+/// the five relayed variants, or `App::guest_relays_transport` says this
+/// device isn't a Shared Control guest right now.
+///
+/// Written as a chain of single-variant `matches!` checks, not a `match`
+/// with a catch-all arm: the crate denies `wildcard_enum_match_arm` on
+/// `Action` (`core/action/mod.rs`) precisely so a new variant can't silently
+/// fall through a broad `_`, and `matches!`'s own wildcard is exempt because
+/// it only ever asks about the one named variant.
+fn relay_party_transport(app: &App, action: &Action) -> Option<sync::PlaybackAction> {
+  if !app.guest_relays_transport() {
+    return None;
+  }
+  if matches!(action, Action::TogglePlayback) {
+    return Some(if effective_is_playing(app) {
+      sync::PlaybackAction::Pause
+    } else {
+      sync::PlaybackAction::Play
+    });
+  }
+  if matches!(action, Action::Play) && !effective_is_playing(app) {
+    return Some(sync::PlaybackAction::Play);
+  }
+  if matches!(action, Action::Pause) && effective_is_playing(app) {
+    return Some(sync::PlaybackAction::Pause);
+  }
+  if matches!(action, Action::NextTrack) {
+    return Some(sync::PlaybackAction::NextTrack);
+  }
+  if matches!(action, Action::PreviousTrack) {
+    return Some(sync::PlaybackAction::PrevTrack);
+  }
+  if matches!(action, Action::SeekForward) {
+    return Some(sync::PlaybackAction::Seek {
+      position_ms: (app.song_progress_ms as u64)
+        .saturating_add(app.user_config.behavior.seek_milliseconds as u64),
+    });
+  }
+  if matches!(action, Action::SeekBackward) {
+    return Some(sync::PlaybackAction::Seek {
+      position_ms: (app.song_progress_ms as u64)
+        .saturating_sub(app.user_config.behavior.seek_milliseconds as u64),
+    });
+  }
+  None
 }
 
 /// Replicate the matching keybinding for each nav target.

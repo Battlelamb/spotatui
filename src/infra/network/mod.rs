@@ -197,8 +197,7 @@ pub enum IoEvent {
   LeaveParty,
   /// Broadcast current playback state to party guests (host only)
   SyncPlayback,
-  /// Send a playback command to the party host (guest only, Phase 2)
-  #[allow(dead_code)]
+  /// Send a playback command to the party host (guest only)
   PartyPlaybackCommand(sync::PlaybackAction),
   /// Search tracks to add to a new playlist
   SearchTracksForPlaylist(String),
@@ -1511,7 +1510,7 @@ impl Network {
       let _ = session;
       // Publish only what a guest can follow: the same owner rule as the
       // command relay, and a Spotify URI (a native `spotify:local:` track has none).
-      let followable = if party_yields_to_local_playback(&app) {
+      let followable = if app.party_yields_to_local_playback() {
         None
       } else {
         crate::infra::media_metadata::current_playback_snapshot(&app).and_then(|snapshot| {
@@ -1689,7 +1688,7 @@ impl Network {
     let follows_host = matches!(
       app.party_session(),
       Some(s) if s.role == sync::PartyRole::Guest
-    ) && !party_yields_to_local_playback(&app);
+    ) && !app.party_yields_to_local_playback();
     if !follows_host {
       return;
     }
@@ -1759,7 +1758,7 @@ impl Network {
     let relays = matches!(
       app.party_session(),
       Some(s) if s.role == sync::PartyRole::Host
-    ) && !party_yields_to_local_playback(&app);
+    ) && !app.party_yields_to_local_playback();
     if !relays {
       return;
     }
@@ -1787,16 +1786,6 @@ impl Network {
     // Queued behind the command on the serial pump; the 2 s tick repeats it.
     app.dispatch(IoEvent::SyncPlayback);
   }
-}
-
-/// The party follows Spotify transport only. Coarser than the transport
-/// guard on purpose: a queued Spotify track keeps librespot, but a guest must
-/// not drive the host's queue slot. A parked native backend has no Spotify
-/// playback to relay or follow.
-fn party_yields_to_local_playback(app: &App) -> bool {
-  app.apple_music_owns_playback()
-    || app.playback_owner().owns_local_sink()
-    || app.native_parked_here()
 }
 
 #[cfg(test)]
