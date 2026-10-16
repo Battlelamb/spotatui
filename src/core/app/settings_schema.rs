@@ -113,7 +113,8 @@ pub(crate) fn setting_requirement(id: &str) -> Requirement {
     | "keys.jump_to_artist_album"
     | "keys.jump_to_context"
     | "keys.copy_song_url"
-    | "keys.copy_album_url" => Requirement::SpotifySession,
+    | "keys.copy_album_url"
+    | "keys.listening_party" => Requirement::SpotifySession,
     // The like key favorites the station under Radio.
     "keys.like_track" => Requirement::AnyOf(&[
       Requirement::Capability(Capability::Like),
@@ -770,6 +771,18 @@ impl App {
           value: SettingValue::Key(key_to_config_string(&self.user_config.keys.previous_page)),
         },
         SettingItem {
+          id: "keys.jump_to_start".to_string(),
+          name: "Jump to Start".to_string(),
+          description: "Jump to the first row of the list".to_string(),
+          value: SettingValue::Key(key_to_config_string(&self.user_config.keys.jump_to_start)),
+        },
+        SettingItem {
+          id: "keys.jump_to_end".to_string(),
+          name: "Jump to End".to_string(),
+          description: "Jump to the last row of the list".to_string(),
+          value: SettingValue::Key(key_to_config_string(&self.user_config.keys.jump_to_end)),
+        },
+        SettingItem {
           id: "keys.toggle_playback".to_string(),
           name: "Toggle Playback".to_string(),
           description: "Play/pause".to_string(),
@@ -864,6 +877,12 @@ impl App {
           name: "Switch Music Source".to_string(),
           description: "Open the source and device picker".to_string(),
           value: SettingValue::Key(key_to_config_string(&self.user_config.keys.manage_devices)),
+        },
+        SettingItem {
+          id: "keys.listening_party".to_string(),
+          name: "Listening Party".to_string(),
+          description: "Open the Listening Party menu".to_string(),
+          value: SettingValue::Key(key_to_config_string(&self.user_config.keys.listening_party)),
         },
         SettingItem {
           id: "keys.decrease_volume".to_string(),
@@ -1335,6 +1354,48 @@ mod tests {
     app.active_source = Source::Local;
     assert!(!app
       .availability(setting_requirement("keys.like_track"))
+      .is_available());
+  }
+
+  #[test]
+  fn keybinding_rows_show_jump_and_party_keys() {
+    let app = keybinding_rows_with_f5_help_and_home_search();
+    assert_eq!(
+      key_row(&app, "keys.jump_to_start"),
+      SettingValue::Key("ctrl-a".to_string())
+    );
+    assert_eq!(
+      key_row(&app, "keys.jump_to_end"),
+      SettingValue::Key("ctrl-e".to_string())
+    );
+    assert_eq!(
+      key_row(&app, "keys.listening_party"),
+      SettingValue::Key("ctrl-p".to_string())
+    );
+  }
+
+  #[test]
+  fn editing_the_jump_to_end_row_saves_the_new_key() {
+    let mut app = App::default();
+    app.view.settings_category = SettingsCategory::Keybindings;
+    app.load_settings_for_category();
+    let item = app
+      .settings_items
+      .iter_mut()
+      .find(|item| item.id == "keys.jump_to_end")
+      .expect("keys.jump_to_end row");
+    item.value = SettingValue::Key("ctrl-x".to_string());
+
+    app.apply_settings_changes();
+
+    assert_eq!(app.user_config.keys.jump_to_end, Key::Ctrl('x'));
+  }
+
+  #[test]
+  fn the_listening_party_key_row_needs_a_spotify_session() {
+    let app = App::default();
+    assert!(!app
+      .availability(setting_requirement("keys.listening_party"))
       .is_available());
   }
 }
