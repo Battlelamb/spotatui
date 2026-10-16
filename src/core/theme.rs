@@ -270,6 +270,8 @@ pub enum ThemePreset {
   GruvboxLight,
   CatppuccinMocha,
   TokyoNight,
+  HighContrast,
+  ColorblindSafe,
   Custom, // When user has manually customized colors
 }
 
@@ -289,6 +291,8 @@ impl ThemePreset {
       ThemePreset::GruvboxLight,
       ThemePreset::CatppuccinMocha,
       ThemePreset::TokyoNight,
+      ThemePreset::HighContrast,
+      ThemePreset::ColorblindSafe,
       ThemePreset::Custom,
     ]
   }
@@ -308,6 +312,8 @@ impl ThemePreset {
       ThemePreset::GruvboxLight => "Gruvbox Light",
       ThemePreset::CatppuccinMocha => "Catppuccin Mocha",
       ThemePreset::TokyoNight => "Tokyo Night",
+      ThemePreset::HighContrast => "High Contrast",
+      ThemePreset::ColorblindSafe => "Colorblind Safe",
       ThemePreset::Custom => "Custom",
     }
   }
@@ -327,6 +333,8 @@ impl ThemePreset {
       "Gruvbox Light" => ThemePreset::GruvboxLight,
       "Catppuccin Mocha" => ThemePreset::CatppuccinMocha,
       "Tokyo Night" => ThemePreset::TokyoNight,
+      "High Contrast" => ThemePreset::HighContrast,
+      "Colorblind Safe" => ThemePreset::ColorblindSafe,
       _ => ThemePreset::Custom,
     }
   }
@@ -603,6 +611,54 @@ impl ThemePreset {
         header: Color::Rgb(122, 162, 247),       // Blue #7aa2f7,
         highlighted_lyrics: Color::Rgb(42, 195, 222), // Light blue #2ac3de
       },
+      // Every colour below is a flat `Rgb` (no `Reset`, which depends on the
+      // terminal's own palette) so the contrast guarantee this preset is
+      // named for actually holds. See `accessibility_presets_clear_wcag_aa_contrast`.
+      ThemePreset::HighContrast => Theme {
+        analysis_bar: Color::Rgb(0, 255, 0), // Lime, 15.3:1 on black
+        analysis_bar_text: Color::Rgb(255, 255, 255), // White, 21:1 on black
+        active: Color::Rgb(0, 255, 0),       // Lime, 15.3:1 on black
+        banner: Color::Rgb(255, 255, 255),   // White, 21:1 on black
+        error_border: Color::Rgb(255, 70, 70), // Bright red, 6.2:1 on black
+        error_text: Color::Rgb(255, 70, 70), // Bright red, 6.2:1 on black
+        hint: Color::Rgb(255, 191, 0),       // Amber, 12.7:1 on black
+        hovered: Color::Rgb(0, 255, 255),    // Cyan, 16.75:1 on black
+        inactive: Color::Rgb(140, 140, 140), // Gray, 6.25:1 on black
+        playbar_background: Color::Rgb(0, 0, 0), // Black
+        playbar_progress: Color::Rgb(0, 255, 255), // Cyan, 16.75:1 on playbar_background
+        playbar_progress_text: Color::Rgb(255, 255, 255), // White, 21:1 on playbar_background
+        playbar_text: Color::Rgb(255, 255, 255), // White, 21:1 on playbar_background
+        selected: Color::Rgb(255, 255, 0),   // Yellow, 19.56:1 on black
+        text: Color::Rgb(255, 255, 255),     // White, 21:1 on black (WCAG AAA)
+        background: Color::Rgb(0, 0, 0),     // Black
+        header: Color::Rgb(255, 255, 255),   // White, 21:1 on black
+        highlighted_lyrics: Color::Rgb(255, 255, 0), // Yellow, 19.56:1 on black
+      },
+      // The Okabe & Ito (2008) colour-blind-safe palette: every accent stays
+      // distinguishable under protanopia, deuteranopia and tritanopia (unlike
+      // this struct's own `error_*`/`active` red-vs-green pairing in most
+      // other presets), and every pair still clears WCAG AA against its
+      // background. See `accessibility_presets_clear_wcag_aa_contrast`.
+      ThemePreset::ColorblindSafe => Theme {
+        analysis_bar: Color::Rgb(0, 158, 115), // Bluish green, 5.5:1
+        analysis_bar_text: Color::Rgb(255, 255, 255), // White, 18.7:1
+        active: Color::Rgb(0, 158, 115),       // Bluish green, 5.5:1
+        banner: Color::Rgb(86, 180, 233),      // Sky blue, 8.1:1
+        error_border: Color::Rgb(213, 94, 0),  // Vermillion, 4.8:1
+        error_text: Color::Rgb(213, 94, 0),    // Vermillion, 4.8:1
+        hint: Color::Rgb(230, 159, 0),         // Orange, 8.3:1
+        hovered: Color::Rgb(204, 121, 167),    // Reddish purple, 6.1:1
+        inactive: Color::Rgb(140, 140, 140),   // Gray, 5.6:1
+        playbar_background: Color::Rgb(18, 18, 18), // Near-black
+        playbar_progress: Color::Rgb(86, 180, 233), // Sky blue, 8.1:1 on playbar_background
+        playbar_progress_text: Color::Rgb(255, 255, 255), // White, 18.7:1 on playbar_background
+        playbar_text: Color::Rgb(255, 255, 255), // White, 18.7:1 on playbar_background
+        selected: Color::Rgb(240, 228, 66),    // Yellow, 14.2:1
+        text: Color::Rgb(255, 255, 255),       // White, 18.7:1
+        background: Color::Rgb(18, 18, 18),    // Near-black
+        header: Color::Rgb(255, 255, 255),     // White, 18.7:1
+        highlighted_lyrics: Color::Rgb(240, 228, 66), // Yellow, 14.2:1
+      },
       ThemePreset::Custom => Theme::default(), // Won't be used directly
     }
   }
@@ -877,5 +933,96 @@ mod tests {
     assert_eq!(resolve(Color::Indexed(196), &palette), [255, 0, 0]);
     assert_eq!(resolve(Color::Indexed(232), &palette), [8, 8, 8]);
     assert_eq!(resolve(Color::Indexed(255), &palette), [238, 238, 238]);
+  }
+
+  /// WCAG 2.1 relative luminance of a flat `Rgb` color (0.0 = black, 1.0 =
+  /// white). The accessibility presets never use `Reset` or a named ANSI
+  /// color precisely so this is well-defined for them.
+  fn relative_luminance(color: Color) -> f64 {
+    let Color::Rgb(r, g, b) = color else {
+      panic!("contrast tests expect flat Rgb colors, got {color:?}");
+    };
+    fn channel(c: u8) -> f64 {
+      let c = f64::from(c) / 255.0;
+      if c <= 0.03928 {
+        c / 12.92
+      } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+      }
+    }
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  }
+
+  /// WCAG 2.1 contrast ratio between two colors, in `[1.0, 21.0]`.
+  fn contrast_ratio(a: Color, b: Color) -> f64 {
+    let (l1, l2) = (relative_luminance(a), relative_luminance(b));
+    let (lighter, darker) = if l1 >= l2 { (l1, l2) } else { (l2, l1) };
+    (lighter + 0.05) / (darker + 0.05)
+  }
+
+  #[test]
+  fn accessibility_presets_clear_wcag_aa_contrast() {
+    // WCAG AA for normal text is 4.5:1. Each foreground is checked against
+    // the background it is actually drawn on: most fields render as a `fg`
+    // over the general `background`, but the playbar row sets its own `bg`
+    // (`playbar_background`) independently - see the per-field comments on
+    // `ThemePreset::HighContrast`/`ColorblindSafe` in `to_theme` for the
+    // exact ratio each color was chosen for.
+    const AA: f64 = 4.5;
+    for preset in [ThemePreset::HighContrast, ThemePreset::ColorblindSafe] {
+      let theme = preset.to_theme();
+      for (field, color) in [
+        ("text", theme.text),
+        ("selected", theme.selected),
+        ("hovered", theme.hovered),
+        ("active", theme.active),
+        ("hint", theme.hint),
+        ("error_text", theme.error_text),
+        ("error_border", theme.error_border),
+        ("inactive", theme.inactive),
+        ("header", theme.header),
+        ("banner", theme.banner),
+        ("highlighted_lyrics", theme.highlighted_lyrics),
+        ("analysis_bar", theme.analysis_bar),
+        ("analysis_bar_text", theme.analysis_bar_text),
+      ] {
+        let ratio = contrast_ratio(color, theme.background);
+        assert!(
+          ratio >= AA,
+          "{preset:?}.{field} vs background: {ratio:.2}:1, want >= {AA}:1"
+        );
+      }
+      for (field, color) in [
+        ("playbar_text", theme.playbar_text),
+        ("playbar_progress", theme.playbar_progress),
+        ("playbar_progress_text", theme.playbar_progress_text),
+      ] {
+        let ratio = contrast_ratio(color, theme.playbar_background);
+        assert!(
+          ratio >= AA,
+          "{preset:?}.{field} vs playbar_background: {ratio:.2}:1, want >= {AA}:1"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn high_contrast_primary_text_clears_wcag_aaa() {
+    // The flagship pair of the theme literally named "High Contrast" clears
+    // AAA (7:1), not just AA - otherwise the name is a vibe, not a guarantee.
+    let theme = ThemePreset::HighContrast.to_theme();
+    let ratio = contrast_ratio(theme.text, theme.background);
+    assert!(
+      ratio >= 7.0,
+      "text vs background: {ratio:.2}:1, want >= 7:1"
+    );
+  }
+
+  #[test]
+  fn accessibility_preset_names_round_trip_through_from_name() {
+    for preset in [ThemePreset::HighContrast, ThemePreset::ColorblindSafe] {
+      assert_eq!(ThemePreset::from_name(preset.name()), preset);
+      assert!(ThemePreset::all().contains(&preset));
+    }
   }
 }

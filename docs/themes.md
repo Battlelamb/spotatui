@@ -19,6 +19,8 @@ spotatui comes with several built-in theme presets. Access them via `Alt-,` (`Ct
 | Gruvbox Light    | Light variant with warm colors              |
 | Catppuccin Mocha | Popular pastel dark theme                   |
 | Tokyo Night      | The [Tokyo Night](https://github.com/folke/tokyonight.nvim) palette |
+| High Contrast    | Pure black/white/primary accents; every color clears WCAG AA against its background (text clears AAA) |
+| Colorblind Safe  | The [Okabe & Ito](https://jfly.uni-koeln.de/color/) palette: accents stay distinguishable under protanopia, deuteranopia and tritanopia, and still clear WCAG AA |
 
 ## Custom Themes
 

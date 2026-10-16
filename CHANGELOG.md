@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Two accessibility-focused theme presets**: High Contrast (pure black/white, every color clears WCAG AA against its background, text clears AAA) and Colorblind Safe (the Okabe & Ito palette, distinguishable under protanopia, deuteranopia and tritanopia). Cycle to them from Settings > Theme like any other preset ([#3](https://github.com/LargeModGames/spotatui/issues/3)).
+
 - **Search settings in the desktop app and browser GUI**: filter by section, setting name or description, and press Escape to clear the search ([#840](https://github.com/LargeModGames/spotatui/issues/840)).
 
 - **The Shuffle button on Liked Songs and playlist pages works**: in the desktop app and the browser GUI, it plays the songs the page shows in a random order, only the matching ones when you filter.
