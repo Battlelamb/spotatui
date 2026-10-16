@@ -757,9 +757,14 @@ fn draw_table(
 
   let (title, header) = table_layout;
 
+  // Most rows need none of the per-cell mutations below (playing marker, liked
+  // icon), so cloning `item.format` up front would allocate a `Vec<String>`
+  // for every row on every frame for nothing. `owned_row` defers that clone
+  // until a mutation actually happens; the common row borrows straight from
+  // `item.format` instead.
   let rows = items.iter().enumerate().map(|(i, item)| {
-    let mut formatted_row = item.format.clone();
     let mut style = app.user_config.theme.base_style(); // default styling
+    let mut owned_row: Option<Vec<String>> = None;
 
     // if table displays songs
     match header.id {
@@ -769,7 +774,8 @@ fn draw_table(
         // user's column config omits `title` so the playing row is never unmarked.
         if track_playing_index == Some(i) {
           let title_idx = header.get_index(ColumnId::Title).unwrap_or(0);
-          if let Some(cell) = formatted_row.get_mut(title_idx) {
+          let row = owned_row.get_or_insert_with(|| item.format.clone());
+          if let Some(cell) = row.get_mut(title_idx) {
             cell.insert_str(0, &app.user_config.padded_playing_icon());
           }
           style = Style::default()
@@ -780,13 +786,15 @@ fn draw_table(
         // Show this the liked icon if the song is liked
         if let Some(liked_idx) = header.get_index(ColumnId::Liked) {
           if app.liked_song_ids_set().contains(item.id.as_str()) {
-            formatted_row[liked_idx] = app.user_config.padded_liked_icon();
+            let row = owned_row.get_or_insert_with(|| item.format.clone());
+            row[liked_idx] = app.user_config.padded_liked_icon();
           }
         }
       }
       TableId::PodcastEpisodes if track_playing_index == Some(i) => {
         let name_idx = header.get_index(ColumnId::Title).unwrap_or(0);
-        if let Some(cell) = formatted_row.get_mut(name_idx) {
+        let row = owned_row.get_or_insert_with(|| item.format.clone());
+        if let Some(cell) = row.get_mut(name_idx) {
           cell.insert_str(0, &app.user_config.padded_playing_icon());
         }
         style = Style::default()
@@ -802,7 +810,10 @@ fn draw_table(
     }
 
     // Return row styled data
-    Row::new(formatted_row).style(style)
+    match owned_row {
+      Some(row) => Row::new(row).style(style),
+      None => Row::new(item.format.iter().map(String::as_str)).style(style),
+    }
   });
 
   let widths = header
