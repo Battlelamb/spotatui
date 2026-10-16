@@ -55,14 +55,24 @@ fn draw_name_stage(f: &mut Frame<'_>, app: &App, area: Rect) {
   f.render_widget(label, inner[0]);
 
   let name_text: String = app.view.create_playlist_name.iter().collect();
-  let input = Paragraph::new(name_text).style(theme.base_style()).block(
-    Block::default()
-      .borders(Borders::ALL)
-      .border_style(Style::default().fg(theme.active.into())),
-  );
+  let name_inner_width = inner[1].width.saturating_sub(2);
+  let name_scroll_offset =
+    if name_inner_width > 0 && app.view.create_playlist_name_cursor >= name_inner_width {
+      app.view.create_playlist_name_cursor - name_inner_width + 1
+    } else {
+      0
+    };
+  let input = Paragraph::new(name_text)
+    .style(theme.base_style())
+    .scroll((0, name_scroll_offset))
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.active.into())),
+    );
   f.render_widget(input, inner[1]);
   f.set_cursor_position((
-    inner[1].x + 1 + app.view.create_playlist_name_cursor,
+    inner[1].x + 1 + app.view.create_playlist_name_cursor - name_scroll_offset,
     inner[1].y + 1,
   ));
 
@@ -104,19 +114,29 @@ fn draw_add_tracks_stage(f: &mut Frame<'_>, app: &App, area: Rect) {
   } else {
     Style::default().fg(theme.inactive.into())
   };
-  let search_input = Paragraph::new(search_text).style(theme.base_style()).block(
-    Block::default()
-      .title(Span::styled(
-        "Search (Enter to search)",
-        Style::default().fg(theme.header.into()),
-      ))
-      .borders(Borders::ALL)
-      .border_style(search_border_style),
-  );
+  let search_inner_width = inner[0].width.saturating_sub(2);
+  let search_scroll_offset =
+    if search_inner_width > 0 && app.view.create_playlist_search_cursor >= search_inner_width {
+      app.view.create_playlist_search_cursor - search_inner_width + 1
+    } else {
+      0
+    };
+  let search_input = Paragraph::new(search_text)
+    .style(theme.base_style())
+    .scroll((0, search_scroll_offset))
+    .block(
+      Block::default()
+        .title(Span::styled(
+          "Search (Enter to search)",
+          Style::default().fg(theme.header.into()),
+        ))
+        .borders(Borders::ALL)
+        .border_style(search_border_style),
+    );
   f.render_widget(search_input, inner[0]);
   if app.view.create_playlist_focus == CreatePlaylistFocus::SearchInput {
     f.set_cursor_position((
-      inner[0].x + 1 + app.view.create_playlist_search_cursor,
+      inner[0].x + 1 + app.view.create_playlist_search_cursor - search_scroll_offset,
       inner[0].y + 1,
     ));
   }
@@ -212,4 +232,107 @@ fn draw_add_tracks_stage(f: &mut Frame<'_>, app: &App, area: Rect) {
     )
     .style(theme.base_style());
   f.render_stateful_widget(added_list, panels[1], &mut added_state);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ratatui::{backend::TestBackend, Terminal};
+
+  fn rendered_cursor(app: &App, area: Rect) -> (u16, u16) {
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+      .draw(|f| draw_create_playlist_form(f, app))
+      .unwrap();
+    let cursor = terminal.backend().cursor_position();
+    (cursor.x, cursor.y)
+  }
+
+  /// The exact name-input `Rect` `draw_name_stage` renders into, so a test can
+  /// compute the real right-border column instead of approximating it.
+  fn name_input_rect(area: Rect) -> Rect {
+    let form_area = centered_rect(area, 80, 80);
+    Layout::default()
+      .direction(Direction::Vertical)
+      .margin(2)
+      .constraints([
+        Constraint::Length(1),
+        Constraint::Length(3),
+        Constraint::Length(1),
+      ])
+      .split(form_area)[1]
+  }
+
+  /// The exact search-input `Rect` `draw_add_tracks_stage` renders into.
+  fn search_input_rect(area: Rect) -> Rect {
+    let form_area = centered_rect(area, 80, 80);
+    Layout::default()
+      .direction(Direction::Vertical)
+      .margin(1)
+      .constraints([Constraint::Length(3), Constraint::Min(5)])
+      .split(form_area)[0]
+  }
+
+  /// Typing a playlist name past the input box width must scroll the text so
+  /// the cursor never escapes the border, instead of clipping silently.
+  #[test]
+  fn name_input_scrolls_so_cursor_stays_inside_the_box() {
+    let mut app = App::default();
+    let area = Rect::new(0, 0, 20, 10);
+    let input_rect = name_input_rect(area);
+    let text_inner_width = input_rect.width.saturating_sub(2);
+
+    let long_name: Vec<char> = "a".repeat(text_inner_width as usize + 10).chars().collect();
+    app.view.create_playlist_name_cursor = long_name.len() as u16;
+    app.view.create_playlist_name = long_name;
+
+    let (cursor_x, _) = rendered_cursor(&app, area);
+    let right_border_x = input_rect.x + input_rect.width.saturating_sub(1);
+    assert!(
+      cursor_x < right_border_x,
+      "cursor at x={cursor_x} escaped the input box border at x={right_border_x}"
+    );
+  }
+
+  /// Same guarantee for the Add Tracks stage's search box.
+  #[test]
+  fn search_input_scrolls_so_cursor_stays_inside_the_box() {
+    let mut app = App::default();
+    app.view.create_playlist_stage = CreatePlaylistStage::AddTracks;
+    app.view.create_playlist_focus = CreatePlaylistFocus::SearchInput;
+    let area = Rect::new(0, 0, 20, 10);
+    let input_rect = search_input_rect(area);
+    let text_inner_width = input_rect.width.saturating_sub(2);
+
+    let long_query: Vec<char> = "b".repeat(text_inner_width as usize + 10).chars().collect();
+    app.view.create_playlist_search_cursor = long_query.len() as u16;
+    app.view.create_playlist_search_input = long_query;
+
+    let (cursor_x, _) = rendered_cursor(&app, area);
+    let right_border_x = input_rect.x + input_rect.width.saturating_sub(1);
+    assert!(
+      cursor_x < right_border_x,
+      "cursor at x={cursor_x} escaped the search box border at x={right_border_x}"
+    );
+  }
+
+  /// Below the scroll threshold the cursor position is untouched (no
+  /// off-by-one from an unconditional scroll offset).
+  #[test]
+  fn short_name_input_does_not_scroll() {
+    let mut app = App::default();
+    let area = Rect::new(0, 0, 30, 10);
+    let input_rect = name_input_rect(area);
+
+    let short_name: Vec<char> = "hi".chars().collect();
+    app.view.create_playlist_name_cursor = short_name.len() as u16;
+    app.view.create_playlist_name = short_name;
+
+    let (cursor_x, _) = rendered_cursor(&app, area);
+    assert_eq!(
+      cursor_x,
+      input_rect.x + 1 + 2,
+      "unscrolled cursor should sit right after the typed text"
+    );
+  }
 }
