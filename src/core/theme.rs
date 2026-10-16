@@ -383,25 +383,31 @@ impl ThemePreset {
         header: Color::Reset,
         highlighted_lyrics: Color::Cyan,
       },
+      // A bright pink background needs dark text to be readable: every color
+      // below is picked to clear WCAG AA (>=4.5:1) against `background`
+      // (245, 115, 180), except `error_border`, `inactive` and `analysis_bar`,
+      // which are non-text UI components (border/dim-label/graph-fill) held
+      // only to the >=3:1 floor WCAG uses for those. See the contrast test in
+      // this module's `tests` for the exact numbers.
       ThemePreset::PookiePink => Theme {
-        analysis_bar: Color::Rgb(255, 255, 255),         // White
-        analysis_bar_text: Color::Rgb(165, 30, 100),     // Dark pink
-        active: Color::Rgb(150, 25, 92),                 // Deep pink
-        banner: Color::Rgb(255, 145, 205),               // Light-medium pink
-        error_border: Color::Rgb(175, 0, 75),            // Deep rose
-        error_text: Color::Rgb(255, 215, 235),           // Light pink-white
-        hint: Color::Rgb(255, 235, 245),                 // Soft white-pink
-        hovered: Color::Rgb(220, 85, 155),               // Mid pink for hover
-        inactive: Color::Rgb(255, 195, 225),             // Muted pink
-        playbar_background: Color::Rgb(245, 115, 180),   // Pink
-        playbar_progress: Color::Rgb(255, 255, 255),     // White
-        playbar_progress_text: Color::Rgb(175, 35, 105), // Dark pink
-        playbar_text: Color::Rgb(255, 255, 255),         // White
-        selected: Color::Rgb(125, 20, 80),               // Deeper pink for selected row
-        text: Color::Rgb(255, 255, 255),                 // White
-        background: Color::Rgb(245, 115, 180),           // Pink background
-        header: Color::Rgb(255, 255, 255),               // White
-        highlighted_lyrics: Color::Rgb(255, 230, 245),   // Light pink-white
+        analysis_bar: Color::Rgb(115, 10, 58), // Deep pink (graph fill)
+        analysis_bar_text: Color::Rgb(255, 255, 255), // White (on analysis_bar)
+        active: Color::Rgb(100, 10, 58),       // Deep berry
+        banner: Color::Rgb(95, 10, 55),        // Deep pink
+        error_border: Color::Rgb(150, 0, 60),  // Deep rose
+        error_text: Color::Rgb(100, 0, 30),    // Dark red-pink
+        hint: Color::Rgb(100, 8, 50),          // Deep rose
+        hovered: Color::Rgb(55, 5, 32),        // Near-black pink
+        inactive: Color::Rgb(110, 40, 70),     // Muted but legible berry
+        playbar_background: Color::Rgb(245, 115, 180), // Pink
+        playbar_progress: Color::Rgb(105, 10, 55), // Deep pink
+        playbar_progress_text: Color::Rgb(75, 5, 40), // Dark maroon
+        playbar_text: Color::Rgb(75, 5, 40),   // Dark maroon
+        selected: Color::Rgb(95, 10, 60),      // Deep pink for selected row
+        text: Color::Rgb(75, 5, 40),           // Dark maroon
+        background: Color::Rgb(245, 115, 180), // Pink background
+        header: Color::Rgb(75, 5, 40),         // Dark maroon
+        highlighted_lyrics: Color::Rgb(100, 8, 50), // Deep rose
       },
       ThemePreset::Vesper => Theme {
         analysis_bar: Color::Rgb(153, 255, 228),     // Mint (#99FFE4)
@@ -877,5 +883,72 @@ mod tests {
     assert_eq!(resolve(Color::Indexed(196), &palette), [255, 0, 0]);
     assert_eq!(resolve(Color::Indexed(232), &palette), [8, 8, 8]);
     assert_eq!(resolve(Color::Indexed(255), &palette), [238, 238, 238]);
+  }
+
+  fn relative_luminance(rgb: [u8; 3]) -> f64 {
+    fn channel(c: u8) -> f64 {
+      let c = f64::from(c) / 255.0;
+      if c <= 0.03928 {
+        c / 12.92
+      } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+      }
+    }
+    0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+  }
+
+  /// WCAG 2.1 contrast ratio between two colors. Every `PookiePink` field is
+  /// a `Color::Rgb`, so the palette used to resolve named/indexed colors does
+  /// not matter here.
+  fn contrast_ratio(a: Color, b: Color) -> f64 {
+    let palette = Palette::default();
+    let (l1, l2) = (
+      relative_luminance(resolve(a, &palette)),
+      relative_luminance(resolve(b, &palette)),
+    );
+    let (lighter, darker) = if l1 >= l2 { (l1, l2) } else { (l2, l1) };
+    (lighter + 0.05) / (darker + 0.05)
+  }
+
+  // Regression for the PookiePink preset being broadly unreadable against
+  // its own (bright pink) background: text/`White` landed at 2.63:1, and
+  // `hovered` at 1.37:1 - both far under WCAG's floors. Every text/accent
+  // color must now clear the 4.5:1 AA text floor; the few non-text UI
+  // components (a border, an intentionally-dim label, a graph fill) only
+  // need the lower 3:1 floor WCAG uses for those.
+  #[test]
+  fn pookie_pink_clears_wcag_contrast_against_its_own_background() {
+    let theme = ThemePreset::PookiePink.to_theme();
+    for (label, fg) in [
+      ("text", theme.text),
+      ("header", theme.header),
+      ("hint", theme.hint),
+      ("playbar_text", theme.playbar_text),
+      ("playbar_progress_text", theme.playbar_progress_text),
+      ("highlighted_lyrics", theme.highlighted_lyrics),
+      ("error_text", theme.error_text),
+      ("banner", theme.banner),
+      ("active", theme.active),
+      ("selected", theme.selected),
+      ("hovered", theme.hovered),
+    ] {
+      let ratio = contrast_ratio(fg, theme.background);
+      assert!(
+        ratio >= 4.5,
+        "{label} ({fg:?}) against background should clear WCAG AA (4.5:1), got {ratio:.2}:1"
+      );
+    }
+    for (label, fg) in [
+      ("error_border", theme.error_border),
+      ("inactive", theme.inactive),
+      ("analysis_bar", theme.analysis_bar),
+      ("playbar_progress", theme.playbar_progress),
+    ] {
+      let ratio = contrast_ratio(fg, theme.background);
+      assert!(
+        ratio >= 3.0,
+        "{label} ({fg:?}) against background should clear the 3:1 non-text floor, got {ratio:.2}:1"
+      );
+    }
   }
 }
