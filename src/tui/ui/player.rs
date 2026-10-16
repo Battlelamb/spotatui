@@ -1622,20 +1622,33 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
   }
 
   if !drew_playbar {
-    if let Some(message) = app.status_message() {
+    // Nothing owns playback and there is no status message either (first
+    // launch, a logout, or any time a message's TTL has expired): draw the
+    // same bordered strip every other branch does instead of leaving the
+    // playbar area a blank, borderless gap.
+    let title = if let Some(message) = app.status_message() {
       let msg_style = if app.status_message_is_error() {
         Style::default().fg(app.user_config.theme.error_text.into())
       } else {
         Style::default().fg(app.user_config.theme.playbar_text.into())
       };
-      let title_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .style(Style::default().bg(app.user_config.theme.playbar_background.into()))
-        .title(Span::styled(format!("Status: {}", message), msg_style))
-        .border_style(Style::default().fg(app.user_config.theme.inactive.into()));
-      f.render_widget(title_block, layout_chunk);
-    }
+      Span::styled(format!("Status: {}", message), msg_style)
+    } else {
+      Span::styled(
+        format!(
+          "Nothing is playing \u{2014} press `{}` to choose a device",
+          app.user_config.keys.manage_devices
+        ),
+        Style::default().fg(app.user_config.theme.inactive.into()),
+      )
+    };
+    let title_block = Block::default()
+      .borders(Borders::ALL)
+      .border_type(BorderType::Rounded)
+      .style(Style::default().bg(app.user_config.theme.playbar_background.into()))
+      .title(title)
+      .border_style(Style::default().fg(app.user_config.theme.inactive.into()));
+    f.render_widget(title_block, layout_chunk);
   }
 }
 
@@ -2394,6 +2407,66 @@ mod tests {
     assert!(
       content.contains("pressing `D`"),
       "reopen hint should name the rebound key: {content}"
+    );
+  }
+
+  fn render_playbar(app: &App, w: u16, h: u16) -> String {
+    use ratatui::{backend::TestBackend, Terminal};
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal
+      .draw(|f| {
+        let area = f.area();
+        draw_playbar(f, app, area);
+      })
+      .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..h)
+      .flat_map(|y| (0..w).map(move |x| (x, y)))
+      .filter_map(|(x, y)| buffer.cell((x, y)).map(|c| c.symbol().to_string()))
+      .collect()
+  }
+
+  #[test]
+  fn no_session_and_no_status_message_still_draws_a_bordered_hint() {
+    let app = App::default();
+    let content = render_playbar(&app, 60, 6);
+    assert!(
+      content.contains("Nothing is playing"),
+      "no-session playbar should explain there is nothing playing: {content}"
+    );
+    assert!(
+      content.contains("press `d` to choose a device"),
+      "no-session playbar should name the manage_devices key: {content}"
+    );
+    assert!(
+      content.contains('\u{256d}') || content.contains('\u{2500}'),
+      "no-session playbar should still draw a border, not a blank area: {content}"
+    );
+  }
+
+  #[test]
+  fn no_session_hint_names_the_rebound_manage_devices_key() {
+    let mut app = App::default();
+    app.user_config.keys.manage_devices = Key::Char('D');
+    let content = render_playbar(&app, 60, 6);
+    assert!(
+      content.contains("press `D` to choose a device"),
+      "no-session hint should name the rebound key: {content}"
+    );
+  }
+
+  #[test]
+  fn a_status_message_still_wins_over_the_no_session_hint() {
+    let mut app = App::default();
+    app.set_status_message("Saved", 5);
+    let content = render_playbar(&app, 60, 6);
+    assert!(
+      content.contains("Status: Saved"),
+      "an active status message should render as before: {content}"
+    );
+    assert!(
+      !content.contains("Nothing is playing"),
+      "the no-session hint must not fight the status message for the same line: {content}"
     );
   }
 }
