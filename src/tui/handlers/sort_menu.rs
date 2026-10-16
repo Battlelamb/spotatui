@@ -24,6 +24,12 @@ pub fn handler(key: Key, app: &mut App) {
     Key::Esc | Key::Char(',') => {
       close_sort_menu(app);
     }
+    // Must come before the `Key::Char(c)` shortcut arm below: if someone
+    // rebinds `back` to a letter that is also a sort shortcut, back has to
+    // win, or the key sorts instead of closing the menu.
+    k if k == app.user_config.keys.back => {
+      close_sort_menu(app);
+    }
     k if common_key_events::up_event(k, &app.user_config.keys) => {
       if app.view.sort_menu_selected > 0 {
         app.view.sort_menu_selected -= 1;
@@ -120,6 +126,15 @@ mod tests {
     assert_eq!(app.artist_sort.order, SortOrder::Ascending);
     assert!(!app.view.sort_menu_visible);
     assert!(app.view.sort_context.is_none());
+  }
+
+  #[test]
+  fn the_back_key_closes_the_sort_menu() {
+    let mut app = app_with_open_menu(SortContext::PlaylistTracks);
+
+    handler(app.user_config.keys.back, &mut app);
+
+    assert!(!app.view.sort_menu_visible);
   }
 
   #[test]

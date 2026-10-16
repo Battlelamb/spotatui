@@ -79,12 +79,23 @@ fn dj_captures_key_before_back(app: &App) -> bool {
   app.get_current_route().active_block == ActiveBlock::AiDj
 }
 
+/// An open plugin popup or sort menu gets every key, the back key included:
+/// both are drawn from state the runner's back-key branch does not touch
+/// (`pop_navigation_stack` only clears `api_error`), so letting the back key
+/// pop the route underneath leaves the overlay on screen, now unresponsive.
+fn modal_captures_key_before_back(app: &App) -> bool {
+  app.plugin_popup.is_some() || app.get_current_route().active_block == ActiveBlock::SortMenu
+}
+
 /// Blocks that must see the configurable back key *before* the runner acts on it
 /// themselves. Ordering is the whole point, so this is one predicate rather than
 /// two conditions spelled out at the call site: a screen that is missing here has
 /// its route popped instead of receiving the key, however well its own handler
 /// copes with it.
 fn key_reaches_handlers_before_back(app: &App, key: Key) -> bool {
+  if modal_captures_key_before_back(app) {
+    return true;
+  }
   #[cfg(feature = "ai-dj")]
   if dj_captures_key_before_back(app) {
     return true;
@@ -425,6 +436,62 @@ mod tests {
     app.push_navigation_stack(RouteId::ExitPrompt, ActiveBlock::ExitPrompt);
 
     assert!(dispatch_key(Key::Char('y'), &mut app));
+  }
+
+  /// Regression: `q` used to pop the route out from under an open sort menu,
+  /// leaving the menu drawn over whatever screen the pop landed on.
+  #[test]
+  fn the_back_key_closes_the_sort_menu_and_keeps_the_playlist_open() {
+    use crate::core::sort::SortContext;
+
+    let mut app = app();
+    app.push_navigation_stack(RouteId::TrackTable, ActiveBlock::TrackTable);
+    app.view.sort_context = Some(SortContext::PlaylistTracks);
+    app.view.sort_menu_visible = true;
+    app.set_current_route_state(Some(ActiveBlock::SortMenu), None);
+
+    dispatch_key(app.user_config.keys.back, &mut app);
+
+    assert!(!app.view.sort_menu_visible);
+    assert_eq!(app.get_current_route().id, RouteId::TrackTable);
+    assert_eq!(app.get_current_route().active_block, ActiveBlock::Empty);
+  }
+
+  /// Same regression for a Lua plugin popup: `q` used to open the Exit prompt
+  /// behind the popup instead of closing it.
+  #[test]
+  fn the_back_key_closes_a_plugin_popup_without_leaving_the_screen() {
+    use crate::core::action::Action;
+    use crate::core::plugin_api::PluginPopup;
+
+    let mut app = app();
+    app.apply(Action::ShowPopup(PluginPopup {
+      title: "t".into(),
+      lines: vec![],
+    }));
+
+    dispatch_key(app.user_config.keys.back, &mut app);
+
+    assert!(app.plugin_popup.is_none());
+    assert_eq!(app.get_current_route().id, RouteId::Home);
+  }
+
+  #[test]
+  fn the_back_key_closes_a_plugin_popup_without_popping_a_deeper_screen() {
+    use crate::core::action::Action;
+    use crate::core::plugin_api::PluginPopup;
+
+    let mut app = app();
+    app.push_navigation_stack(RouteId::TrackTable, ActiveBlock::TrackTable);
+    app.apply(Action::ShowPopup(PluginPopup {
+      title: "t".into(),
+      lines: vec![],
+    }));
+
+    dispatch_key(app.user_config.keys.back, &mut app);
+
+    assert!(app.plugin_popup.is_none());
+    assert_eq!(app.get_current_route().id, RouteId::TrackTable);
   }
 }
 
