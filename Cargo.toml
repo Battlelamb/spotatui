@@ -300,6 +300,14 @@ codegen-units = 1  # Better optimization
 lto = true         # Link-time optimization
 opt-level = "s"    # Prioritize small binary size
 strip = true       # Remove debug symbols
+# `panic = "abort"` was measured (SPO-5): ~14% smaller binary and ~33% faster
+# release build (slim feature set), but it makes `catch_unwind` unable to
+# catch anything - the process aborts on panic instead of unwinding. That
+# breaks two deliberate recovery paths: Lua plugin callbacks
+# (src/infra/scripting/engine.rs, see its module doc) and native-streaming
+# sink creation/ops (src/infra/player/streaming.rs) are both wrapped in
+# catch_unwind specifically so a panic there logs an error and keeps the app
+# running instead of taking the whole process down. Not adopting it.
 
 [package.metadata.deb]
 maintainer = "LargeModGames <LargeModGames@gmail.com>"
