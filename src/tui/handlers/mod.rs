@@ -106,6 +106,11 @@ pub fn handle_app(key: Key, app: &mut App) {
           .saturating_add(1)
           .min(max_scroll);
       }
+      // A rebound back key must close the popup too, not just the hard-coded
+      // `q` above (which stays, per docs/scripting.md's documented default).
+      k if k == app.user_config.keys.back => {
+        app.apply(Action::ClosePopup);
+      }
       _ => {} // swallow all other keys
     }
     return;
