@@ -5854,7 +5854,6 @@ dependencies = [
  "objc2-foundation",
  "objc2-media-player",
  "open",
- "openssl",
  "openssl-sys",
  "pipewire",
  "protobuf",
