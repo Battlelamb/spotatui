@@ -10,6 +10,8 @@ pub mod help;
 pub mod home;
 pub mod library;
 pub mod lyrics;
+#[cfg(test)]
+mod perf_bench;
 pub mod player;
 pub mod playlist_sync;
 pub mod plugin_screen;
