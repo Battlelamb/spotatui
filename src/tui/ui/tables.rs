@@ -734,7 +734,7 @@ fn draw_table(
   highlight_state: (bool, bool),
 ) {
   let selected_style = get_color(highlight_state, app.user_config.theme)
-    .add_modifier(Modifier::BOLD | Modifier::REVERSED);
+    .add_modifier(Modifier::REVERSED | app.user_config.behavior.emphasis(Modifier::BOLD));
 
   let track_playing_index = app.current_playback_context.as_ref().and_then(|ctx| {
     ctx.item.as_ref().and_then(|item| match item {
@@ -987,6 +987,49 @@ mod tests {
   }
 
   #[test]
+  fn selected_table_row_is_not_bold_when_text_emphasis_is_off() {
+    let mut app = App::default();
+    app.user_config.behavior.enable_text_emphasis = false;
+    app.track_table.tracks = (0..3).map(track).collect();
+    app.view.track_table_index = 0;
+
+    let area = Rect::new(0, 0, 80, 12);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal.draw(|f| draw_song_table(f, &app, area)).unwrap();
+    let buffer = terminal.backend().buffer();
+    // Row 0 is the block border, row 1 the column headers, row 2 the first
+    // (selected) data row. x=3 lands inside the title text, not the border.
+    let cell = buffer.cell((3, 2)).unwrap();
+    assert!(
+      cell.modifier.contains(Modifier::REVERSED),
+      "selection must stay visible even with emphasis off"
+    );
+    assert!(
+      !cell.modifier.contains(Modifier::BOLD),
+      "selected row must not be bold when Text Emphasis is off"
+    );
+  }
+
+  #[test]
+  fn selected_table_row_is_bold_when_text_emphasis_is_on() {
+    let mut app = App::default();
+    assert!(app.user_config.behavior.enable_text_emphasis, "default on");
+    app.track_table.tracks = (0..3).map(track).collect();
+    app.view.track_table_index = 0;
+
+    let area = Rect::new(0, 0, 80, 12);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal.draw(|f| draw_song_table(f, &app, area)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((3, 2)).unwrap();
+    assert!(cell.modifier.contains(Modifier::REVERSED));
+    assert!(
+      cell.modifier.contains(Modifier::BOLD),
+      "the default look (emphasis on) must not change"
+    );
+  }
+
+  #[test]
   fn song_table_view_stays_anchored_until_cursor_hits_top() {
     let mut app = App::default();
     app.track_table.tracks = (0..30).map(track).collect();
@@ -1053,6 +1096,31 @@ mod tests {
     assert!(
       content.contains("Single (1 track)"),
       "a one-track folder should use the singular: {content}"
+    );
+  }
+
+  #[test]
+  fn selected_list_row_is_not_bold_when_text_emphasis_is_off() {
+    let mut app = App::default();
+    app.user_config.behavior.enable_text_emphasis = false;
+    *app.local_playlists_mut() = vec![folder("MyAlbum", 3)];
+    app.view.local_playlists_index = 0;
+
+    let area = Rect::new(0, 0, 60, 6);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+      .draw(|f| draw_local_browser(f, &app, area))
+      .unwrap();
+    let buffer = terminal.backend().buffer();
+    // Row 0 is the block border, row 1 the first (selected) list item.
+    let cell = buffer.cell((3, 1)).unwrap();
+    assert!(
+      cell.modifier.contains(Modifier::REVERSED),
+      "selection must stay visible even with emphasis off"
+    );
+    assert!(
+      !cell.modifier.contains(Modifier::BOLD),
+      "selected row must not be bold when Text Emphasis is off"
     );
   }
 
