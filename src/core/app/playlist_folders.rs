@@ -145,15 +145,6 @@ impl App {
     self.view.playlist_scroll_offset.set(0);
   }
 
-  /// Get the playlist for a PlaylistFolderItem::Playlist variant
-  #[allow(dead_code)]
-  pub fn get_playlist_for_item(&self, item: &PlaylistFolderItem) -> Option<&PlaylistInfo> {
-    match item {
-      PlaylistFolderItem::Playlist { index, .. } => self.all_playlists.get(*index),
-      PlaylistFolderItem::Folder(_) | PlaylistFolderItem::CommunityPin => None,
-    }
-  }
-
   /// Get the currently selected playlist id in the visible playlist list.
   #[allow(dead_code)]
   pub fn get_selected_playlist_id(&self) -> Option<String> {
